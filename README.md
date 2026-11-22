@@ -49,6 +49,9 @@ Portok: `47801/tcp` (DeviceBridge), `47800/udp` (keresés), `47822/tcp` (SSH, cs
 Szükséges: JDK 17+ (21 ajánlott), Android SDK (platform 35). A `local.properties` fájlban add meg az SDK helyét (`sdk.dir=...`).
 
 ```powershell
+.\gradlew.bat :desktop:portableZip        # hordozható DeviceBridge.exe saját Javával (Java telepítése nem kell):
+                                          #   desktop\build\jpackage\DeviceBridge\DeviceBridge.exe
+                                          #   desktop\build\distributions\DeviceBridge-portable.zip
 .\gradlew.bat :desktop:fatJar             # desktop\build\libs\DeviceBridge-desktop.jar
 .\gradlew.bat :android-app:assembleDebug  # android-app\build\outputs\apk\debug\android-app-debug.apk
 .\gradlew.bat :common:test                # tesztek (kézfogás, párosítás, fájlátvitel, távoli asztal)

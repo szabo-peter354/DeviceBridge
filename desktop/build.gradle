@@ -43,3 +43,48 @@ tasks.register('fatJar', Jar) {
 }
 
 tasks.named('assemble') { dependsOn 'fatJar' }
+
+// Hordozható Windows alkalmazás saját Java futtatókörnyezettel (Java telepítése nem kell):
+// desktop/build/jpackage/DeviceBridge/DeviceBridge.exe  és  desktop/build/distributions/DeviceBridge-portable.zip
+def jpackageInput = layout.buildDirectory.dir('jpackage-input')
+def jpackageDest = layout.buildDirectory.dir('jpackage')
+
+tasks.register('prepareJpackageInput', Sync) {
+    from tasks.named('fatJar')
+    into jpackageInput
+}
+
+tasks.register('portableApp', Exec) {
+    group = 'distribution'
+    description = 'Hordozható DeviceBridge.exe (jpackage app-image).'
+    dependsOn 'prepareJpackageInput'
+    inputs.dir(jpackageInput)
+    inputs.file('packaging/DeviceBridge.ico')
+    outputs.dir(jpackageDest)
+    doFirst { delete jpackageDest }
+    def jpackage = "${System.getProperty('java.home')}/bin/jpackage"
+    commandLine jpackage,
+            '--type', 'app-image',
+            '--name', 'DeviceBridge',
+            '--app-version', '1.0.0',
+            '--vendor', 'DeviceBridge',
+            '--description', 'DeviceBridge - PC es Android osszekapcsolasa',
+            '--input', jpackageInput.get().asFile.absolutePath,
+            '--main-jar', 'DeviceBridge-desktop.jar',
+            '--main-class', application.mainClass.get(),
+            '--icon', file('packaging/DeviceBridge.ico').absolutePath,
+            '--add-modules', 'java.base,java.desktop,java.logging,java.management,java.naming,java.rmi,' +
+                    'java.security.jgss,jdk.crypto.ec,jdk.charsets,jdk.unsupported,jdk.zipfs',
+            '--jlink-options', '--strip-debug --no-man-pages --no-header-files',
+            '--java-options', '-Dfile.encoding=UTF-8',
+            '--dest', jpackageDest.get().asFile.absolutePath
+}
+
+tasks.register('portableZip', Zip) {
+    group = 'distribution'
+    description = 'A hordozható alkalmazás ZIP-be csomagolva.'
+    dependsOn 'portableApp'
+    from(jpackageDest)
+    archiveFileName = 'DeviceBridge-portable.zip'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+}

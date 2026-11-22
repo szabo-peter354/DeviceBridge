@@ -14,9 +14,29 @@ android {
         versionName '1.0.0'
     }
 
+    // Kiadási aláírás: android-app/keystore.properties (nincs a gitben – őrizd meg, frissítéshez ugyanez a kulcs kell!)
+    def ksFile = file('keystore.properties')
+    def ks = new Properties()
+    if (ksFile.exists()) ksFile.withInputStream { ks.load(it) }
+
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile file(ks.getProperty('storeFile'))
+                storePassword ks.getProperty('storePassword')
+                keyAlias ks.getProperty('keyAlias')
+                keyPassword ks.getProperty('keyPassword')
+            }
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
+            if (ksFile.exists()) signingConfig signingConfigs.release
         }
     }
 

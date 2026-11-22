@@ -255,7 +255,10 @@ public final class DesktopApp {
         }
         String line;
         File bat = new File(jar.getParentFile().getParentFile(), "bin\\DeviceBridge.bat");
-        if (jar.getName().equals("DeviceBridge-desktop.jar")) {
+        String exe = System.getProperty("jpackage.app-path"); // a hordozható DeviceBridge.exe állítja be
+        if (exe != null && new File(exe).isFile()) {
+            line = "start \"\" \"" + exe + "\" --minimized";
+        } else if (jar.getName().equals("DeviceBridge-desktop.jar")) {
             String javaw = System.getProperty("java.home") + "\\bin\\javaw.exe";
             line = "start \"\" \"" + javaw + "\" -jar \"" + jar.getAbsolutePath() + "\" --minimized";
         } else if (bat.isFile()) {

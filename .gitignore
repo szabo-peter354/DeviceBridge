@@ -10,3 +10,5 @@ captures/
 *.aab
 *.keystore
 *.jks
+android-app/keystore/
+android-app/keystore.properties
