@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Fejléc -->
+        <LinearLayout
+            style="@style/Row"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:drawablePadding="8dp"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <Switch
+                android:id="@+id/serviceSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Bekapcsolva  " />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/localInfoText"
+            style="@style/Hint"
+            android:fontFamily="monospace" />
+
+        <!-- Kapcsolódás -->
+        <TextView
+            style="@style/SectionTitle"
+            android:text="Kapcsolódás" />
+
+        <Button
+            android:id="@+id/scanButton"
+            style="@style/Btn"
+            android:layout_width="match_parent"
+            android:text="Számítógép keresése a hálózaton" />
+
+        <LinearLayout
+            android:id="@+id/foundList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            style="@style/Row"
+            android:gravity="center_vertical">
+
+            <EditText
+                android:id="@+id/hostInput"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="IP-cím vagy host[:port]"
+                android:importantForAutofill="no"
+                android:inputType="textUri"
+                android:singleLine="true" />
+
+            <Button
+                android:id="@+id/connectButton"
+                style="@style/Btn"
+                android:layout_width="wrap_content"
+                android:layout_weight="0"
+                android:text="Kapcsolódás" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/Hint"
+            android:text="Wi-Fi / LAN / Bluetooth PAN: keresés vagy IP-cím. Internet: írd be a PC címét (pl. VPN-en át).\nUSB: kapcsold be az USB-hibakeresést, majd a PC-n válaszd az USB kapcsolatot.\nBluetooth: párosítsd a telefont a PC-vel, a PC-n válaszd a Bluetooth COM portot." />
+
+        <!-- Vezérlés (csak kapcsolódva) -->
+        <LinearLayout
+            android:id="@+id/controlSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                style="@style/SectionTitle"
+                android:text="Vezérlés" />
+
+            <TextView
+                android:id="@+id/peerStatusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="6dp" />
+
+            <LinearLayout style="@style/Row">
+                <Button android:id="@+id/viewScreenButton" style="@style/Btn" android:text="PC képernyője" />
+                <Button android:id="@+id/shareScreenButton" style="@style/Btn" android:text="Képernyőm megosztása" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/Row">
+                <Button android:id="@+id/sendFileButton" style="@style/Btn" android:text="Fájl küldése" />
+                <Button android:id="@+id/clipboardButton" style="@style/Btn" android:text="Vágólap küldése" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/Row">
+                <Button android:id="@+id/openUrlButton" style="@style/Btn" android:text="Link a PC-n" />
+                <Button android:id="@+id/messageButton" style="@style/Btn" android:text="Üzenet" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/Row">
+                <Button android:id="@+id/lockButton" style="@style/Btn" android:text="PC zárolása" />
+                <Button android:id="@+id/ringButton" style="@style/Btn" android:text="PC csörgetése" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/Row">
+                <Button android:id="@+id/prevButton" style="@style/Btn" android:text="⏮" />
+                <Button android:id="@+id/playButton" style="@style/Btn" android:text="⏯" />
+                <Button android:id="@+id/nextButton" style="@style/Btn" android:text="⏭" />
+                <Button android:id="@+id/volDownButton" style="@style/Btn" android:text="🔉" />
+                <Button android:id="@+id/volUpButton" style="@style/Btn" android:text="🔊" />
+                <Button android:id="@+id/muteButton" style="@style/Btn" android:text="🔇" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/Row">
+                <Button android:id="@+id/sshButton" style="@style/Btn" android:text="SSH terminál (PC)" />
+                <Button android:id="@+id/disconnectButton" style="@style/Btn" android:text="Bontás" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/SectionTitle"
+                android:text="Fájlátvitelek" />
+
+            <TextView
+                android:id="@+id/transfersText"
+                style="@style/Hint"
+                android:alpha="0.9"
+                android:text="Még nincs átvitel." />
+        </LinearLayout>
+
+        <!-- Beállítások -->
+        <TextView
+            style="@style/SectionTitle"
+            android:text="Beállítások és engedélyek" />
+
+        <LinearLayout style="@style/Row">
+            <Button android:id="@+id/settingsButton" style="@style/Btn" android:text="Beállítások" />
+            <Button android:id="@+id/pairedButton" style="@style/Btn" android:text="Párosított eszközök" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/Row">
+            <Button android:id="@+id/accessibilityButton" style="@style/Btn" android:text="Távvezérlés engedélyezése" />
+            <Button android:id="@+id/permissionsButton" style="@style/Btn" android:text="Engedélyek" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/Hint"
+            android:text="Tipp: a DeviceBridge a lehúzható értesítési sáv Gyorsbeállításai közül is be-/kikapcsolható – szerkeszd a csempéket, és húzd be a DeviceBridge csempét." />
+
+        <TextView
+            style="@style/SectionTitle"
+            android:text="Napló" />
+
+        <TextView
+            android:id="@+id/logText"
+            style="@style/Hint"
+            android:fontFamily="monospace"
+            android:textIsSelectable="true"
+            android:textSize="11sp" />
+    </LinearLayout>
+</ScrollView>

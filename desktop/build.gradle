@@ -1,0 +1,45 @@
+plugins {
+    id 'application'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+dependencies {
+    implementation project(':common')
+    implementation "org.apache.sshd:sshd-core:${rootProject.ext.sshdVersion}"
+    implementation "org.apache.sshd:sshd-sftp:${rootProject.ext.sshdVersion}"
+    implementation 'com.fazecast:jSerialComm:2.11.0'
+    implementation 'com.formdev:flatlaf:3.5.1'
+    runtimeOnly 'org.slf4j:slf4j-nop:1.7.36'
+}
+
+application {
+    mainClass = 'com.devicebridge.desktop.DesktopMain'
+    applicationName = 'DeviceBridge'
+}
+
+// Egyetlen futtatható JAR minden függőséggel: desktop/build/libs/DeviceBridge-desktop.jar
+tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = 'Önálló, futtatható JAR készítése.'
+    archiveFileName = 'DeviceBridge-desktop.jar'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass.get()
+    }
+    from sourceSets.main.output
+    dependsOn configurations.runtimeClasspath
+    from {
+        configurations.runtimeClasspath.findAll { it.name.endsWith('.jar') }.collect { zipTree(it) }
+    }
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/versions/*/module-info.class', 'module-info.class'
+}
+
+tasks.named('assemble') { dependsOn 'fatJar' }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DeviceBridge</string>
+    <string name="accessibility_label">DeviceBridge távvezérlés</string>
+    <string name="accessibility_description">Lehetővé teszi, hogy a párosított számítógép érintéseket, csúsztatásokat és szöveget küldjön erre a telefonra, amíg te megosztod a képernyődet. A DeviceBridge semmilyen képernyőtartalmat nem olvas és nem tárol.</string>
+</resources>
