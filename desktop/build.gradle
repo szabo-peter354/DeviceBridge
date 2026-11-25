@@ -16,6 +16,7 @@ dependencies {
     implementation "org.apache.sshd:sshd-core:${rootProject.ext.sshdVersion}"
     implementation "org.apache.sshd:sshd-sftp:${rootProject.ext.sshdVersion}"
     implementation 'com.fazecast:jSerialComm:2.11.0'
+    implementation 'net.java.dev.jna:jna:5.14.0'   // közvetlen Bluetooth (Winsock RFCOMM) COM port nélkül
     implementation 'com.formdev:flatlaf:3.5.1'
     runtimeOnly 'org.slf4j:slf4j-nop:1.7.36'
 }

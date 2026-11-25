@@ -16,7 +16,9 @@ import java.io.BufferedOutputStream;
 import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
@@ -47,6 +49,7 @@ public final class SecureChannel implements Closeable {
     private static final int TAG_BITS = 128;
 
     private final Transport transport;
+    private final ActivityInput activity;
     private final DataInputStream in;
     private final DataOutputStream out;
     private final SecretKeySpec sendKey;
@@ -57,11 +60,14 @@ public final class SecureChannel implements Closeable {
     private long sendCounter;
     private long recvCounter;
     private volatile boolean closed;
+    /** Mióta tart az éppen futó írás (0 = nincs írás folyamatban). */
+    private volatile long writeStartedAt;
     private PeerInfo peer;
 
-    private SecureChannel(Transport transport, DataInputStream in, DataOutputStream out, byte[] sendKey, byte[] recvKey)
-            throws GeneralSecurityException {
+    private SecureChannel(Transport transport, ActivityInput activity, DataInputStream in, DataOutputStream out,
+                          byte[] sendKey, byte[] recvKey) throws GeneralSecurityException {
         this.transport = transport;
+        this.activity = activity;
         this.in = in;
         this.out = out;
         this.sendKey = new SecretKeySpec(sendKey, "AES");
@@ -73,7 +79,8 @@ public final class SecureChannel implements Closeable {
     public static SecureChannel handshake(Transport transport, boolean initiator, LocalInfo local, Identity identity,
                                           TrustStore trust, PairingConfirmer confirmer) throws IOException {
         transport.setReadTimeout(20_000);
-        DataInputStream in = new DataInputStream(new BufferedInputStream(transport.input(), 64 * 1024));
+        ActivityInput activity = new ActivityInput(transport.input());
+        DataInputStream in = new DataInputStream(new BufferedInputStream(activity, 64 * 1024));
         DataOutputStream out = new DataOutputStream(new BufferedOutputStream(transport.output(), 64 * 1024));
         try {
             KeyPair eph = CryptoUtil.generateEcKeyPair();
@@ -118,7 +125,7 @@ public final class SecureChannel implements Closeable {
             byte[] r2i = Arrays.copyOfRange(okm, 32, 64);
             byte[] sasBytes = Arrays.copyOfRange(okm, 64, 68);
 
-            SecureChannel ch = new SecureChannel(transport, in, out, initiator ? i2r : r2i, initiator ? r2i : i2r);
+            SecureChannel ch = new SecureChannel(transport, activity, in, out, initiator ? i2r : r2i, initiator ? r2i : i2r);
 
             // Az azonosító kulcs birtoklásának bizonyítása
             byte myRole = (byte) (initiator ? 1 : 0);
@@ -202,9 +209,48 @@ public final class SecureChannel implements Closeable {
             } catch (GeneralSecurityException e) {
                 throw new IOException("Titkosítási hiba", e);
             }
-            out.writeInt(ct.length);
-            out.write(ct);
-            out.flush();
+            writeStartedAt = System.currentTimeMillis();
+            try {
+                out.writeInt(ct.length);
+                out.write(ct);
+                out.flush();
+            } finally {
+                writeStartedAt = 0;
+            }
+        }
+    }
+
+    /** Az utolsó beérkezett bájt ideje (nagy üzenet lassú vonalon is "élő"-nek számít, amíg jön az adat). */
+    public long lastActivity() {
+        return activity.last;
+    }
+
+    /** Mennyi ideje blokkol az éppen futó írás (ms), vagy 0. */
+    public long writeStalledMs() {
+        long s = writeStartedAt;
+        return s == 0 ? 0 : System.currentTimeMillis() - s;
+    }
+
+    /** Számolja, mikor érkezett utoljára adat az átvitelen. */
+    private static final class ActivityInput extends FilterInputStream {
+        volatile long last = System.currentTimeMillis();
+
+        ActivityInput(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int c = super.read();
+            if (c >= 0) last = System.currentTimeMillis();
+            return c;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = super.read(b, off, len);
+            if (n > 0) last = System.currentTimeMillis();
+            return n;
         }
     }
 

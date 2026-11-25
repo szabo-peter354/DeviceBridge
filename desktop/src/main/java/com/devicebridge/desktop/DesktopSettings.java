@@ -60,6 +60,18 @@ public final class DesktopSettings {
     public synchronized String sshPassword() { return p.getProperty("ssh.password"); }
     public synchronized void regenerateSshPassword() { p.setProperty("ssh.password", CryptoUtil.randomPassword(12)); }
 
+    /** Ebben a mappában indul az SSH shell és az SFTP (alapból a felhasználó saját mappája, nem a program mappája). */
+    public synchronized File sshStartDir() {
+        String d = p.getProperty("ssh.startdir");
+        if (d != null && !d.trim().isEmpty()) {
+            File f = new File(d.trim());
+            if (f.isDirectory()) return f.getAbsoluteFile();
+        }
+        return new File(System.getProperty("user.home"));
+    }
+
+    public synchronized void setSshStartDir(File dir) { p.setProperty("ssh.startdir", dir.getAbsolutePath()); }
+
     public synchronized boolean startMinimized() { return Boolean.parseBoolean(p.getProperty("start.minimized", "false")); }
     public synchronized void setStartMinimized(boolean v) { p.setProperty("start.minimized", String.valueOf(v)); }
 

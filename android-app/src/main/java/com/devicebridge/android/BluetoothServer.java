@@ -59,21 +59,31 @@ final class BluetoothServer {
     @SuppressWarnings("MissingPermission")
     private void loop(BluetoothAdapter adapter) {
         boolean announced = false;
+        boolean wasDisabled = false;
+        String lastError = null;
+        int failures = 0;
         while (running) {
+            BluetoothServerSocket ss = null;
             try {
                 if (!adapter.isEnabled()) {
-                    Thread.sleep(5000);
+                    if (!wasDisabled) {
+                        node.log("Bluetooth: ki van kapcsolva – bekapcsolásra vár");
+                        wasDisabled = true;
+                        announced = false;
+                    }
+                    Thread.sleep(3000);
                     continue;
                 }
-                BluetoothServerSocket ss = adapter.listenUsingRfcommWithServiceRecord("DeviceBridge", UUID.fromString(Protocol.SPP_UUID));
+                wasDisabled = false;
+                ss = adapter.listenUsingRfcommWithServiceRecord("DeviceBridge", UUID.fromString(Protocol.SPP_UUID));
                 server = ss;
                 if (!announced) {
                     node.log("Bluetooth: kapcsolatra vár (SPP)");
                     announced = true;
                 }
                 BluetoothSocket s = ss.accept();
-                try { ss.close(); } catch (IOException ignored) { }
-                server = null;
+                failures = 0;
+                lastError = null;
                 String name;
                 try {
                     name = s.getRemoteDevice().getName();
@@ -84,9 +94,24 @@ final class BluetoothServer {
                         "Bluetooth: " + (name == null ? "?" : name), TransportKind.BLUETOOTH));
             } catch (InterruptedException e) {
                 break;
-            } catch (IOException | SecurityException e) {
+            } catch (IOException | RuntimeException e) {
                 if (!running) break;
-                try { Thread.sleep(3000); } catch (InterruptedException ie) { break; }
+                // Ugyanazt a hibát csak egyszer naplózzuk, hogy a napló ne teljen meg
+                String msg = e.getClass().getSimpleName() + ": " + e.getMessage();
+                if (!msg.equals(lastError)) {
+                    node.log("Bluetooth hiba (újrapróbálás): " + e.getMessage());
+                    lastError = msg;
+                    announced = false;
+                }
+                failures++;
+                long delay = Math.min(15_000, 1000L * failures);
+                try { Thread.sleep(delay); } catch (InterruptedException ie) { break; }
+            } finally {
+                // Kapcsolat elfogadása vagy hiba után a régi szerver socketet mindig lezárjuk és újat nyitunk
+                if (ss != null) {
+                    try { ss.close(); } catch (IOException ignored) { }
+                }
+                server = null;
             }
         }
     }

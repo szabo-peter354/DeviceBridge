@@ -32,19 +32,29 @@ public final class NetUtil {
         return sa instanceof InetSocketAddress && isLocalAddress(((InetSocketAddress) sa).getAddress());
     }
 
-    /** Az eszköz saját, nem-loopback IPv4 címei. */
+    private static boolean isVirtual(NetworkInterface ni) {
+        String n = (ni.getDisplayName() + " " + ni.getName()).toLowerCase();
+        return ni.isVirtual() || n.contains("virtualbox") || n.contains("vmware") || n.contains("hyper-v")
+                || n.contains("vethernet") || n.contains("wsl") || n.contains("docker") || n.contains("tap-");
+    }
+
+    /** Az eszköz saját, nem-loopback IPv4 címei (valódi hálózat elöl, virtuális és link-local a végén). */
     public static List<InetAddress> localIPv4Addresses() {
-        List<InetAddress> out = new ArrayList<>();
+        List<InetAddress> real = new ArrayList<>();
+        List<InetAddress> other = new ArrayList<>();
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!ni.isUp() || ni.isLoopback()) continue;
+                boolean virtual = isVirtual(ni);
                 for (InetAddress a : Collections.list(ni.getInetAddresses())) {
-                    if (a instanceof Inet4Address && !a.isLoopbackAddress()) out.add(a);
+                    if (!(a instanceof Inet4Address) || a.isLoopbackAddress()) continue;
+                    (virtual || a.isLinkLocalAddress() ? other : real).add(a);
                 }
             }
         } catch (Exception ignored) {
         }
-        return out;
+        real.addAll(other);
+        return real;
     }
 
     /** IPv4 broadcast címek minden aktív interfészen. */
@@ -56,6 +66,37 @@ public final class NetUtil {
                 for (InterfaceAddress ia : ni.getInterfaceAddresses()) {
                     InetAddress b = ia.getBroadcast();
                     if (b != null && !out.contains(b)) out.add(b);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /**
+     * A helyi IPv4 alhálózatok összes lehetséges gépcíme (saját cím nélkül), legfeljebb {@code max} darab.
+     * Csak /22-es vagy kisebb hálózatokat jár be. Ott használjuk, ahol a broadcastot szűrik
+     * (pl. egyes Xiaomi telefonok, routerek sávok között).
+     */
+    public static List<InetAddress> subnetHosts(int max) {
+        List<InetAddress> out = new ArrayList<>();
+        try {
+            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                for (InterfaceAddress ia : ni.getInterfaceAddresses()) {
+                    InetAddress a = ia.getAddress();
+                    int prefix = ia.getNetworkPrefixLength();
+                    if (!(a instanceof Inet4Address) || prefix < 22 || prefix > 30 || a.isLinkLocalAddress()) continue;
+                    byte[] b = a.getAddress();
+                    int ip = ((b[0] & 0xff) << 24) | ((b[1] & 0xff) << 16) | ((b[2] & 0xff) << 8) | (b[3] & 0xff);
+                    int mask = prefix == 0 ? 0 : -1 << (32 - prefix);
+                    int net = ip & mask;
+                    int count = ~mask;
+                    for (int i = 1; i < count && out.size() < max; i++) {
+                        int h = net | i;
+                        if (h == ip) continue;
+                        out.add(InetAddress.getByAddress(new byte[]{(byte) (h >>> 24), (byte) (h >>> 16), (byte) (h >>> 8), (byte) h}));
+                    }
                 }
             }
         } catch (Exception ignored) {

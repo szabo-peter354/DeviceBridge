@@ -102,6 +102,8 @@ public final class Discovery {
             byte[] q = (QUERY + "|" + ownFingerprint).getBytes(StandardCharsets.UTF_8);
             Set<InetAddress> targets = new LinkedHashSet<>(NetUtil.broadcastAddresses());
             targets.add(InetAddress.getByName("255.255.255.255"));
+            // Sok telefon/router eldobja a broadcastot, ezért az alhálózat minden címét közvetlenül is megkérdezzük
+            List<InetAddress> hosts = NetUtil.subnetHosts(2048);
             long end = System.currentTimeMillis() + timeoutMs;
             long nextSend = 0;
             int sends = 0;
@@ -114,8 +116,16 @@ public final class Discovery {
                         } catch (IOException ignored) {
                         }
                     }
+                    if (sends < 2) {
+                        for (InetAddress h : hosts) {
+                            try {
+                                s.send(new DatagramPacket(q, q.length, h, Protocol.DISCOVERY_PORT));
+                            } catch (IOException ignored) {
+                            }
+                        }
+                    }
                     sends++;
-                    nextSend = System.currentTimeMillis() + 400;
+                    nextSend = System.currentTimeMillis() + 600;
                 }
                 try {
                     DatagramPacket p = new DatagramPacket(buf, buf.length);

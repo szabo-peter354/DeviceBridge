@@ -26,6 +26,7 @@ public final class DesktopMain {
         File dataDir = DesktopSettings.defaultDataDir();
         //noinspection ResultOfMethodCallIgnored
         dataDir.mkdirs();
+        FileLog.init(dataDir);
 
         // Egyszerre csak egy példány futhat (a portok miatt)
         FileChannel ch = new RandomAccessFile(new File(dataDir, "app.lock"), "rw").getChannel();

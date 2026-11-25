@@ -31,6 +31,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 /** A PC alkalmazás magja: összeköti a közös motort a Windows/Linux specifikus részekkel. */
 public final class DesktopApp {
@@ -67,6 +69,17 @@ public final class DesktopApp {
         node = new BridgeNode(this::localInfo, identity, trust, (peer, code) -> {
             Ui u = ui;
             return u == null ? CompletableFuture.completedFuture(false) : u.confirmPairing(peer, code);
+        });
+        node.addListener(new BridgeNode.Listener() {
+            @Override
+            public void onLog(String line) {
+                FileLog.write(line);
+            }
+
+            @Override
+            public void onStateChanged(BridgeNode.State state, PeerInfo peer) {
+                onStateChangedForBluetooth(state, peer);
+            }
         });
         control = new ControlService(node, new ControlHandler());
         control.setStatusSupplier(this::status);
@@ -169,8 +182,69 @@ public final class DesktopApp {
         });
     }
 
+    // Bluetooth automatikus újrakapcsolódás: ha egy már létrejött Bluetooth kapcsolat váratlanul
+    // megszakad (hatótáv, alvás, zavar), a PC magától újra próbálkozik ugyanazon a COM porton.
+    private static final int BT_RECONNECT_ATTEMPTS = 8;
+    private volatile BridgeNode.TransportOpener btPort;
+    private volatile boolean btEverConnected;
+    private volatile int btAttempts;
+
     void connectSerial(SerialLink.PortInfo port) {
-        node.connectAsync(() -> SerialLink.open(port));
+        connectBluetooth(() -> SerialLink.open(port));
+    }
+
+    /** Közvetlen Bluetooth (RFCOMM) kapcsolat a párosított telefonhoz – COM port nem kell. */
+    void connectRfcomm(BluetoothRfcomm.Device device) {
+        connectBluetooth(() -> BluetoothRfcomm.connect(device));
+    }
+
+    private void connectBluetooth(BridgeNode.TransportOpener opener) {
+        btPort = opener;
+        btEverConnected = false;
+        btAttempts = 0;
+        node.connectAsync(opener);
+    }
+
+    /** Felhasználói bontás: kikapcsolja az automatikus újrakapcsolódást is. */
+    void disconnect() {
+        btPort = null;
+        node.disconnect();
+    }
+
+    private void onStateChangedForBluetooth(BridgeNode.State state, PeerInfo peer) {
+        if (state == BridgeNode.State.CONNECTED) {
+            if (peer != null && peer.kind == TransportKind.BLUETOOTH) {
+                btEverConnected = true;
+                btAttempts = 0;
+            } else {
+                btPort = null; // más úton kapcsolódtunk – nincs mit újraépíteni
+            }
+            return;
+        }
+        if (state != BridgeNode.State.IDLE) return;
+        BridgeNode.TransportOpener port = btPort;
+        if (port == null || !btEverConnected) return;
+        if (node.lastDisconnectWasClean()) {
+            btPort = null;
+            return;
+        }
+        int attempt = ++btAttempts;
+        if (attempt > BT_RECONNECT_ATTEMPTS) {
+            node.log("Bluetooth: az újrakapcsolódás nem sikerült – kapcsolódj újra kézzel");
+            notifyUser("Bluetooth", "A kapcsolat megszakadt, az újrakapcsolódás nem sikerült.");
+            btPort = null;
+            return;
+        }
+        long delay = Math.min(30, 3L * attempt);
+        node.log("Bluetooth: újrakapcsolódás " + delay + " mp múlva ("
+                + attempt + "/" + BT_RECONNECT_ATTEMPTS + ")");
+        try {
+            node.scheduler().schedule(() -> {
+                if (btPort != port || node.state() != BridgeNode.State.IDLE) return;
+                node.connectAsync(port);
+            }, delay, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException ignored) {
+        }
     }
 
     // ------------------------------------------------------------------ SSH a telefonra
@@ -218,8 +292,10 @@ public final class DesktopApp {
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(t.info.password), null);
         String userHost = t.info.user + "@" + t.host;
         if (SystemActions.isWindows()) {
+            // A terminálablak a felhasználó mappájában nyíljon, ne a program (exe) mappájában
             new ProcessBuilder("cmd.exe", "/c", "start", "DeviceBridge SSH", "ssh", "-p", String.valueOf(t.port),
-                    "-o", "StrictHostKeyChecking=accept-new", userHost).start();
+                    "-o", "StrictHostKeyChecking=accept-new", userHost)
+                    .directory(new File(System.getProperty("user.home"))).start();
         } else if (SystemActions.isMac()) {
             new ProcessBuilder("open", "-a", "Terminal").start();
         } else {

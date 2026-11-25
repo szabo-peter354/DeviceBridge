@@ -67,6 +67,7 @@ public final class BridgeNode {
     private final AtomicReference<State> state = new AtomicReference<>(State.IDLE);
     private final Deque<String> logLines = new ArrayDeque<>();
     private volatile BridgeSession session;
+    private volatile boolean lastCloseClean = true;
     private ServerSocket tcpServer;
 
     public BridgeNode(Supplier<LocalInfo> localInfo, Identity identity, TrustStore trustStore, PairingConfirmer confirmer) {
@@ -98,6 +99,11 @@ public final class BridgeNode {
     public PeerInfo peer() {
         BridgeSession s = session;
         return s == null ? null : s.peer();
+    }
+
+    /** Igaz, ha az utolsó kapcsolatot valamelyik fél szándékosan bontotta (nem szakadt meg). */
+    public boolean lastDisconnectWasClean() {
+        return lastCloseClean;
     }
 
     public boolean isConnected() {
@@ -150,14 +156,21 @@ public final class BridgeNode {
         tcpServer = ss;
         Thread t = new Thread(() -> {
             while (!ss.isClosed()) {
+                Socket s = null;
                 try {
-                    Socket s = ss.accept();
+                    s = ss.accept();
                     InetAddress a = s.getInetAddress();
                     TransportKind kind = a.isLoopbackAddress() ? TransportKind.USB : TransportKind.NETWORK;
                     String desc = kind == TransportKind.USB ? "USB (ADB)" : kind.label() + ": " + a.getHostAddress();
                     acceptIncoming(new SocketTransport(s, kind, desc));
-                } catch (IOException e) {
-                    if (!ss.isClosed()) log("TCP szerver hiba: " + e.getMessage());
+                } catch (Throwable e) {
+                    // Semmilyen hiba nem állíthatja le a szervert; a hibás kapcsolatot lezárjuk
+                    if (s != null) {
+                        try { s.close(); } catch (IOException ignored) { }
+                    }
+                    if (ss.isClosed()) break;
+                    log("TCP szerver hiba: " + describe(e) + " (" + e.getClass().getSimpleName() + ")");
+                    try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
                 }
             }
         }, "bridge-tcp-server");
@@ -212,8 +225,14 @@ public final class BridgeNode {
             try { t.close(); } catch (IOException ignored) { }
             return;
         }
-        fireState();
-        executor.execute(() -> runSession(t, false));
+        try {
+            fireState();
+            executor.execute(() -> runSession(t, false));
+        } catch (RuntimeException e) {
+            state.set(State.IDLE);
+            try { t.close(); } catch (IOException ignored) { }
+            throw e;
+        }
     }
 
     private void runSession(Transport t, boolean initiator) {
@@ -230,10 +249,11 @@ public final class BridgeNode {
                 try { f.onSessionStarted(s); } catch (RuntimeException e) { log("Hiba: " + describe(e)); }
             }
             s.runLoop();
-        } catch (Exception e) {
-            if (s == null || !s.isClosed()) log("Kapcsolat hiba: " + describe(e));
+        } catch (Throwable e) {
+            if (s == null || !s.isClosed()) log("Kapcsolat hiba: " + describe(e) + " (" + e.getClass().getSimpleName() + ")");
         } finally {
             try { t.close(); } catch (IOException ignored) { }
+            lastCloseClean = s != null && s.isCleanClose();
             if (s != null) {
                 s.closeInternal();
                 for (Feature f : features) {

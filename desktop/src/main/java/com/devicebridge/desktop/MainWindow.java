@@ -82,7 +82,8 @@ final class MainWindow extends JFrame implements DesktopApp.Ui {
     private final JList<Discovery.Device> lanList = new JList<>(lanModel);
     private final JTextField hostField = new JTextField(18);
     private final JComboBox<AdbHelper.Device> usbCombo = new JComboBox<>();
-    private final JComboBox<SerialLink.PortInfo> btCombo = new JComboBox<>();
+    /** Párosított Bluetooth eszközök (közvetlen RFCOMM) és – tartalékként – Bluetooth COM portok. */
+    private final JComboBox<Object> btCombo = new JComboBox<>();
 
     private final TransferModel transferModel = new TransferModel();
     private final DefaultListModel<TrustStore.TrustedDevice> pairedModel = new DefaultListModel<>();
@@ -117,7 +118,7 @@ final class MainWindow extends JFrame implements DesktopApp.Ui {
         top.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
         statusLabel.setFont(statusLabel.getFont().deriveFont(Font.BOLD, 14f));
         top.add(statusLabel, BorderLayout.CENTER);
-        disconnectButton.addActionListener(e -> app.node.disconnect());
+        disconnectButton.addActionListener(e -> app.disconnect());
         top.add(disconnectButton, BorderLayout.EAST);
 
         JTabbedPane tabs = new JTabbedPane();
@@ -254,16 +255,21 @@ final class MainWindow extends JFrame implements DesktopApp.Ui {
 
         // Bluetooth
         JPanel bt = new JPanel(new BorderLayout());
-        btCombo.setPrototypeDisplayValue(new SerialLink.PortInfo("COM00", "Standard Serial over Bluetooth link", true));
+        btCombo.setPrototypeDisplayValue("Telefon neve hosszabb – 00:00:00:00:00:00");
         bt.add(row(btCombo, button("Frissítés", this::refreshSerial), button("Kapcsolódás", () -> {
-            SerialLink.PortInfo p = (SerialLink.PortInfo) btCombo.getSelectedItem();
-            if (p == null) { info("Nincs elérhető soros port."); return; }
-            app.connectSerial(p);
+            Object sel = btCombo.getSelectedItem();
+            if (sel instanceof BluetoothRfcomm.Device) {
+                app.connectRfcomm((BluetoothRfcomm.Device) sel);
+            } else if (sel instanceof SerialLink.PortInfo) {
+                app.connectSerial((SerialLink.PortInfo) sel);
+            } else {
+                info("Nincs párosított Bluetooth eszköz. Párosítsd a telefont a Windows Bluetooth beállításaiban, majd nyomd meg a Frissítés gombot.");
+            }
         })), BorderLayout.NORTH);
-        bt.add(hint("1) Párosítsd a telefont a Windows Bluetooth beállításaiban. 2) Ha nincs \"Bluetooth\" COM port: "
-                + "Beállítások → Bluetooth → További Bluetooth-beállítások → COM-portok → Hozzáadás → Kimenő → a telefon \"DeviceBridge\" szolgáltatása. "
+        bt.add(hint("Párosítsd a telefont a Windows Bluetooth beállításaiban, a telefonon fusson a DeviceBridge (Bluetooth engedéllyel), "
+                + "majd válaszd ki a listából. COM port nem kell – internet és Wi-Fi nélkül is működik. "
                 + "Gyorsabb kapcsolathoz használhatsz Bluetooth PAN-t is (akkor a Hálózat részt használd)."), BorderLayout.SOUTH);
-        root.add(section("Bluetooth (soros port)", bt));
+        root.add(section("Bluetooth", bt));
         return root;
     }
 
@@ -318,12 +324,33 @@ final class MainWindow extends JFrame implements DesktopApp.Ui {
     }
 
     private void refreshSerial() {
-        btCombo.removeAllItems();
-        try {
-            for (SerialLink.PortInfo p : SerialLink.listPorts()) btCombo.addItem(p);
-        } catch (Throwable t) {
-            app.node.log("Soros portok nem listázhatók: " + t.getMessage());
-        }
+        new SwingWorker<List<Object>, Void>() {
+            @Override
+            protected List<Object> doInBackground() {
+                List<Object> items = new ArrayList<>();
+                try {
+                    items.addAll(BluetoothRfcomm.pairedDevices());
+                } catch (Throwable t) {
+                    app.node.log("Párosított Bluetooth eszközök nem listázhatók: " + t.getMessage());
+                }
+                try {
+                    // Tartalék: csak a ténylegesen létező Bluetooth COM portok
+                    for (SerialLink.PortInfo p : SerialLink.listPorts()) if (p.bluetooth) items.add(p);
+                } catch (Throwable t) {
+                    app.node.log("Soros portok nem listázhatók: " + t.getMessage());
+                }
+                return items;
+            }
+
+            @Override
+            protected void done() {
+                btCombo.removeAllItems();
+                try {
+                    for (Object o : get()) btCombo.addItem(o);
+                } catch (Exception ignored) {
+                }
+            }
+        }.execute();
     }
 
     private void refreshOwnInfo() {
@@ -619,6 +646,7 @@ final class MainWindow extends JFrame implements DesktopApp.Ui {
         sshCreds.setText(creds.get());
         sshCreds.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         JTextField downloadDir = new JTextField(app.settings.downloadDir().getAbsolutePath(), 30);
+        JTextField sshStartDir = new JTextField(app.settings.sshStartDir().getAbsolutePath(), 30);
         JCheckBox autostart = new JCheckBox("Indítás a Windows-zal (a tálcán)", app.isAutostartEnabled());
         autostart.setEnabled(SystemActions.isWindows());
         JCheckBox startMin = new JCheckBox("Indításkor csak a tálcaikon jelenjen meg", app.settings.startMinimized());
@@ -635,6 +663,12 @@ final class MainWindow extends JFrame implements DesktopApp.Ui {
             app.control.sendSshInfo();
         })), c);
         c.gridwidth = 1;
+        c.gridx = 0; c.gridy = ++y; form.add(new JLabel("SSH kezdőmappa:"), c);
+        c.gridx = 1; form.add(row(sshStartDir, button("Tallózás…", () -> {
+            JFileChooser fc = new JFileChooser(sshStartDir.getText());
+            fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) sshStartDir.setText(fc.getSelectedFile().getAbsolutePath());
+        })), c);
         c.gridx = 0; c.gridy = ++y; form.add(new JLabel("Letöltési mappa:"), c);
         c.gridx = 1; form.add(row(downloadDir, button("Tallózás…", () -> {
             JFileChooser fc = new JFileChooser(downloadDir.getText());
@@ -651,6 +685,13 @@ final class MainWindow extends JFrame implements DesktopApp.Ui {
             app.settings.setAllowRemoteControl(remoteAllow.isSelected());
             if (!remoteAllow.isSelected()) app.remote.stopHost("A távoli asztalt letiltották");
             app.settings.setDownloadDir(new File(downloadDir.getText().trim()));
+            File sshDir = new File(sshStartDir.getText().trim());
+            if (sshDir.isDirectory()) {
+                app.settings.setSshStartDir(sshDir);
+            } else {
+                info("Az SSH kezdőmappa nem létezik, a felhasználói mappa marad: " + app.settings.sshStartDir());
+                sshStartDir.setText(app.settings.sshStartDir().getAbsolutePath());
+            }
             app.settings.setStartMinimized(startMin.isSelected());
             boolean sshWas = app.settings.sshEnabled();
             app.settings.setSshEnabled(sshEnabled.isSelected());
@@ -788,7 +829,7 @@ final class MainWindow extends JFrame implements DesktopApp.Ui {
         MenuItem open = new MenuItem("Megnyitás");
         open.addActionListener(e -> showWindow());
         MenuItem disc = new MenuItem("Kapcsolat bontása");
-        disc.addActionListener(e -> app.node.disconnect());
+        disc.addActionListener(e -> app.disconnect());
         MenuItem quit = new MenuItem("Kilépés");
         quit.addActionListener(e -> exit());
         menu.add(open);

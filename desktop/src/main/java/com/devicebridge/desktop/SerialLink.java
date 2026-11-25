@@ -46,15 +46,33 @@ final class SerialLink {
         return bt;
     }
 
+    private static final int OPEN_ATTEMPTS = 3;
+
+    /**
+     * Megnyitja a portot. A Windows a megnyításkor építi fel a Bluetooth (RFCOMM) kapcsolatot, ami
+     * alvó / épp ébredő telefonnál gyakran elsőre nem sikerül, ezért néhányszor újrapróbáljuk.
+     */
     static Transport open(PortInfo info) throws IOException {
-        SerialPort port = SerialPort.getCommPort(info.systemName);
-        port.setBaudRate(115200);
-        port.setComPortTimeouts(SerialPort.TIMEOUT_READ_BLOCKING | SerialPort.TIMEOUT_WRITE_BLOCKING, 0, 0);
-        if (!port.openPort(0)) {
-            throw new IOException("A(z) " + info.systemName + " port nem nyitható meg. Párosítva van a telefon, "
-                    + "és fut rajta a DeviceBridge (bekapcsolt Bluetooth-szal)?");
+        for (int attempt = 1; ; attempt++) {
+            SerialPort port = SerialPort.getCommPort(info.systemName);
+            port.setBaudRate(115200);
+            port.setComPortTimeouts(SerialPort.TIMEOUT_READ_BLOCKING | SerialPort.TIMEOUT_WRITE_BLOCKING, 0, 0);
+            if (port.openPort(0)) {
+                // Egy korábbi, félbeszakadt kapcsolat maradék bájtjai elrontanák a kézfogást
+                port.flushIOBuffers();
+                return new StreamTransport(port.getInputStream(), port.getOutputStream(), port::closePort,
+                        "Bluetooth: " + info.systemName, TransportKind.BLUETOOTH);
+            }
+            if (attempt >= OPEN_ATTEMPTS) {
+                throw new IOException("A(z) " + info.systemName + " port nem nyitható meg. Párosítva van a telefon, "
+                        + "a közelben van, és fut rajta a DeviceBridge (bekapcsolt Bluetooth-szal)?");
+            }
+            try {
+                Thread.sleep(2000L * attempt);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Megszakítva");
+            }
         }
-        return new StreamTransport(port.getInputStream(), port.getOutputStream(), port::closePort,
-                "Bluetooth: " + info.systemName, TransportKind.BLUETOOTH);
     }
 }
